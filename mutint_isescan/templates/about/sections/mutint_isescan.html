@@ -1,0 +1,11 @@
+<p><b>Annotate insertion sequences</b> on a reference genome with
+    <a href="https://github.com/xiezhq/ISEScan" target="_blank" rel="noopener">ISEScan</a>. A
+    panel on the Import data page's reference tabs runs it after a reference is set or
+    updated, or on demand against the stored reference, and merges what it predicts into the
+    annotation as <code>mobile_element</code> features &mdash; what breseq's manual recommends
+    doing with <code>CONVERT-REFERENCE -s</code>, so an IS insertion is called as one MOB
+    rather than two junctions. The merge is a port of breseq's own rule; breseq itself is
+    not needed.</p>
+<p>The work runs on the task queue, because ISEScan takes minutes on a bacterial genome, and
+    installing the result re-annotates every mutation in the experiment. Until ISEScan's
+    package is provisioned by <code>tools.txt</code>, the panel says so and offers nothing.</p>

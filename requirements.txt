@@ -1,0 +1,8 @@
+# Install mutint-core dependencies first:
+#   pip install -r mutint-core/requirements.txt
+#
+# mutint-isescan-specific additions (if any):
+#
+# None. The plugin shells out to ISEScan (see tools.txt), merges its CSV with core's own
+# reference model, and installs the result through core's `install_annotation`; nothing here
+# is new to the venv.

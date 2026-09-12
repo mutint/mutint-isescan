@@ -1,0 +1,29 @@
+{% load static %}
+{% comment %} The body of the ISEScan fieldset on the Import data page's reference tabs. Core
+   draws the fieldset, the enable box and the description; this is the options and the run
+   list. Inputs travel by `name=` -- see mutint_common.annotator_registry. {% endcomment %}
+<div class="isescan-panel" data-runs-url="{{ runs_url }}" data-available="{{ available|yesno:'1,0' }}">
+{% if not available %}
+    <p class="text-muted" style="margin-bottom: 0.4em;"><small>{{ reason }}</small></p>
+{% endif %}
+    <div class="checkbox" style="margin-top: 0;">
+        <label><input type="checkbox" name="replace_existing"
+                      {% if defaults.replace_existing %}checked{% endif %}
+                      {% if not available %}disabled{% endif %}>
+            Replace the existing repeat annotation
+            <small class="text-muted">&mdash; every <code>repeat_region</code> and
+                <code>mobile_element</code> already annotated is removed before ISEScan's are
+                added, as breseq does; deselect to add ISEScan's beside them</small></label>
+    </div>
+    <div class="checkbox" style="margin-top: 0;">
+        <label><input type="checkbox" name="remove_short_is"
+                      {% if defaults.remove_short_is %}checked{% endif %}
+                      {% if not available %}disabled{% endif %}>
+            Complete IS elements only
+            <small class="text-muted">&mdash; ISEScan's <code>--removeShortIS</code>; partial
+                elements are otherwise annotated as pseudo</small></label>
+    </div>
+    <div class="isescan-runs" style="margin-top: 0.4em;"></div>
+</div>
+{{ runs|json_script:"isescan-runs-data" }}
+<script src="{% static 'mutint_isescan/panel.js' %}?v={{ asset_version }}"></script>
