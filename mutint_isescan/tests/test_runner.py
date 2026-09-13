@@ -55,3 +55,14 @@ class EnvironmentTestCase(SimpleTestCase):
     def test_default_threads_is_capped_by_the_setting(self):
         with override_settings(MUTINT_ISESCAN_THREADS=1):
             self.assertEqual(1, runner.default_threads())
+
+    def test_default_threads_leaves_two_cores(self):
+        """`./mutint start` runs a pool of workers, so this is no longer the only thing on the
+        machine: the web server, the cluster and another run may all be competing with it."""
+        with mock.patch.object(runner.os, "cpu_count", return_value=8):
+            self.assertEqual(6, runner.default_threads())
+
+    def test_a_small_machine_still_gets_one(self):
+        for cpus in (None, 1, 2, 3):
+            with mock.patch.object(runner.os, "cpu_count", return_value=cpus):
+                self.assertEqual(1, runner.default_threads())

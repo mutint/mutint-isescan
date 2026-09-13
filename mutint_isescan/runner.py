@@ -80,8 +80,14 @@ def tool_environment(env=None):
 
 
 def default_threads():
-    """Every core, capped by `MUTINT_ISESCAN_THREADS` when a deployment sets one."""
-    threads = os.cpu_count() or 1
+    """All but two cores, capped by `MUTINT_ISESCAN_THREADS` when a deployment sets one.
+
+    Two are left because this is no longer the only thing running: `./mutint start` runs a pool
+    of background workers, so another run, the web server and the cluster are all competing
+    with this one. It was every core, which was defensible when only one task could ever be in
+    flight.
+    """
+    threads = max(1, (os.cpu_count() or 1) - 2)
     cap = getattr(settings, 'MUTINT_ISESCAN_THREADS', None)
     if cap:
         threads = min(threads, int(cap))

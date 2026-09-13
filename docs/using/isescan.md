@@ -47,6 +47,7 @@ and on the + strand with a note in the log when no gene decides it.
 ISEScan itself, which `tools.txt` provisions from bioconda like every other tool. Where it
 is somehow absent the panel says the tool is not installed, the box is disabled and nothing
 else changes; an `isescan.py` on the `PATH` is used if it is there. The run's threads default
-to every core, capped by
+to every core but two — the rest are left for the web server, the database and whatever else
+the background workers are running — capped by
 `MUTINT_ISESCAN_THREADS` when a deployment sets one; `MUTINT_ISESCAN_TIMEOUT_SECONDS` (six
 hours) is the most a run may take.
