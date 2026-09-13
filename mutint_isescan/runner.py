@@ -35,9 +35,6 @@ ISESCAN = 'isescan.py'
 
 REMOVE_SHORT_IS_FLAG = '--removeShortIS'
 
-#: ISEScan's other outputs beside the CSV, kept with it after a run.
-KEPT_SUFFIXES = ('.csv', '.gff', '.sum', '.out')
-
 
 def isescan_path():
     """Where `isescan.py` is, or raise `ToolMissing` naming what installs it."""

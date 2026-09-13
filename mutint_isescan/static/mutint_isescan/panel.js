@@ -57,6 +57,10 @@
             bits.push('<span style="color: #a94442;">' + esc(run.error) + "</span>");
         }
         if (run.log_url) { bits.push('<a href="' + esc(run.log_url) + '">log</a>'); }
+        (run.files || []).forEach(function (file) {
+            bits.push('<a href="' + esc(file.url) + '" title="' + esc(file.name) + '">' +
+                      esc(file.label) + '</a>');
+        });
         if (run.finished && run.delete_url) {
             bits.push('<a href="#" class="isescan-delete" data-url="' + esc(run.delete_url) +
                       '">delete</a>');

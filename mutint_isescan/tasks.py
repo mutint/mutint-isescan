@@ -35,6 +35,7 @@ from mutint_jobs import jobs, logs, processes
 
 from mutint_isescan import merge, runner
 from mutint_isescan.models import (
+    OUTPUT_DIR,
     STATUS_CANCELLED,
     STATUS_FAILED,
     STATUS_INSTALLED,
@@ -49,7 +50,6 @@ logger = logging.getLogger("mutint_isescan.tasks")
 DEFAULT_TIMEOUT_SECONDS = 6 * 60 * 60
 
 REFERENCE_COPY = "reference.fasta"
-OUTPUT_DIR = "out"
 
 #: ISEScan's scratch, large and reproducible, deleted after a run whatever the outcome.
 SCRATCH_DIRS = ("proteome", "hmm")

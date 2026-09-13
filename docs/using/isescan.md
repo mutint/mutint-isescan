@@ -33,16 +33,20 @@ genome, and the panel's run list shows it: queued, running, and then one of thre
   it was.
 - **Failed** — the row says why, and the job's log has ISEScan's own output.
 
-A run can be stopped from the **Jobs** page. Each element is named by ISEScan's cluster
+A run can be stopped from the **Jobs** page. A finished run's row links every file ISEScan
+wrote: the `csv` the elements were read from (bounds, family, copy number, the terminal
+inverted repeats and their scores, complete or partial), the same table as `tsv`, `out` and
+`raw`, ISEScan's own `gff`, the per-family `sum`, the elements' sequences (`is.fna`) and the
+transposase ORFs (`orf.faa`, `orf.fna`). Each element is named by ISEScan's cluster
 (`IS3_25`) and, once stored, by its family (`IS3`), with the cluster kept in the feature's
 note. An element whose strand ISEScan left blank is placed on the strand of a gene inside it,
 and on the + strand with a note in the log when no gene decides it.
 
 ## What it needs
 
-ISEScan itself, which `tools.txt` provisions from bioconda like every other tool. **Until the
-package for Apple Silicon is published there, that line is commented out and the panel says
-the tool is not installed**; the box is disabled and nothing else changes. An `isescan.py`
-on the `PATH` is used if it is there. The run's threads default to every core, capped by
+ISEScan itself, which `tools.txt` provisions from bioconda like every other tool. Where it
+is somehow absent the panel says the tool is not installed, the box is disabled and nothing
+else changes; an `isescan.py` on the `PATH` is used if it is there. The run's threads default
+to every core, capped by
 `MUTINT_ISESCAN_THREADS` when a deployment sets one; `MUTINT_ISESCAN_TIMEOUT_SECONDS` (six
 hours) is the most a run may take.

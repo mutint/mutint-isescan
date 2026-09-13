@@ -1,6 +1,8 @@
-"""Two JSON endpoints for the panel: the run list it polls, and deleting a finished run."""
+"""The panel's endpoints: the run list it polls, deleting a finished run, and a run's files."""
 
-from django.http import JsonResponse
+import os
+
+from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_POST
 
 import mutint_sample.views.common
@@ -10,6 +12,7 @@ from mutint_experiment.permissions import (
     can_view_project,
     experiment_lock_refusal,
 )
+from mutint_common.fileserve import serve_file
 
 from mutint_isescan import annotator
 from mutint_isescan.models import IsescanRun
@@ -53,3 +56,26 @@ def run_delete(request, pk):
                       "delete it."}, status=409)
     isescan_run.delete()
     return JsonResponse({"deleted": pk})
+
+
+def run_file(request, pk, name):
+    """One of the files ISEScan left under a finished run's `out/`, served inline.
+
+    Read access to the project is the bar, as it is for the reference download: the
+    prediction is evidence for an annotation every reader of the experiment already sees.
+    `name` is checked against `output_files()` rather than resolved against the directory,
+    so nothing a client typed reaches the filesystem; 404 throughout, the posture the run
+    list takes, so the endpoint cannot say which run ids exist. Every ISEScan output is text,
+    so they are served as such rather than left to the extension table, which knows nothing
+    of `.faa`, `.sum` or `.raw`.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "You must be signed in."}, status=403)
+    isescan_run = IsescanRun.objects.filter(pk=pk).select_related("experiment").first()
+    if isescan_run is None or not can_view_project(request.user, isescan_run.experiment.project):
+        raise Http404("No such run.")
+    if not isescan_run.is_finished or name not in isescan_run.output_files():
+        raise Http404("No such file.")
+    path = os.path.join(isescan_run.output_dir(), name)
+    return serve_file(request, path, os.path.basename(name),
+                      content_type="text/plain; charset=utf-8")

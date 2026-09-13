@@ -14,9 +14,9 @@ is not a requirement.
 **It needs a worker** — a run is minutes to an hour — so it is enqueued on `django.tasks`;
 `./mutint start` runs one for you.
 
-**Until the osx-arm64 `isescan` package is on bioconda, the tool is not provisioned.** Its
-line in `tools.txt` is present and commented, with the reason; the panel says the tool is not
-installed and offers nothing until it is. An `isescan.py` on `PATH` works meanwhile.
+**The tool is provisioned by `tools.txt`** from bioconda, like every other external tool, so
+nothing is installed by hand. Where it is somehow absent, the panel says so and offers
+nothing; an `isescan.py` on `PATH` is used if it is there.
 
 ## Installing
 

@@ -146,3 +146,48 @@ class PanelTestCase(TestCase):
         self.assertEqual(
             self.client.get("/isescan/runs?experiment_id=%s" % self.experiment.id).status_code,
             404)
+
+    def test_a_finished_run_links_its_files_and_serves_them_to_a_reader(self):
+        self._establish()
+        run = IsescanRun.objects.create(experiment=self.experiment, status=STATUS_QUEUED)
+        out = os.path.join(run.output_dir(), "1")
+        os.makedirs(out)
+        with open(os.path.join(out, "reference.fasta.csv"), "w") as handle:
+            handle.write("seqID,family\nSYN001,IS3\n")
+        with open(os.path.join(out, "reference.fasta.is.fna"), "w") as handle:
+            handle.write(">SYN001_1_2_+ IS3_1\nACGT\n")
+
+        # Unfinished: nothing listed and nothing served, whatever is on disk.
+        rows = self.client.get("/isescan/runs?experiment_id=%s" % self.experiment.id).json()
+        self.assertEqual(rows["runs"][0]["files"], [])
+        self.assertEqual(self.client.get(
+            "/isescan/runs/%d/files/1/reference.fasta.csv" % run.pk).status_code, 404)
+
+        run.status = STATUS_INSTALLED
+        run.save(update_fields=["status"])
+        rows = self.client.get("/isescan/runs?experiment_id=%s" % self.experiment.id).json()
+        files = rows["runs"][0]["files"]
+        self.assertEqual([f["label"] for f in files], ["csv", "is.fna"])
+        self.assertEqual(files[0]["name"], "1/reference.fasta.csv")
+
+        served = self.client.get(files[0]["url"])
+        self.assertEqual(served.status_code, 200)
+        self.assertEqual(served["Content-Type"], "text/plain; charset=utf-8")
+        self.assertEqual(b"".join(served.streaming_content), b"seqID,family\nSYN001,IS3\n")
+
+        # A name that is not one of the run's files is refused, whether or not it resolves
+        # to something real on disk.
+        self.assertEqual(self.client.get(
+            "/isescan/runs/%d/files/1/../../reference.fasta.csv" % run.pk).status_code, 404)
+        self.assertEqual(self.client.get(
+            "/isescan/runs/%d/files/nope.csv" % run.pk).status_code, 404)
+
+        # A reader of the project may read them; a stranger gets 404, not 403.
+        reader = User.objects.create(username="reader", email="r@e.com", is_active=True)
+        from mutint_experiment.permissions import ROLE_READ, grant_project_access
+        grant_project_access(self.project, reader, ROLE_READ, granted_by=self.user)
+        self.client.force_login(reader)
+        self.assertEqual(self.client.get(files[1]["url"]).status_code, 200)
+        stranger = User.objects.create(username="s2", email="s2@e.com", is_active=True)
+        self.client.force_login(stranger)
+        self.assertEqual(self.client.get(files[1]["url"]).status_code, 404)

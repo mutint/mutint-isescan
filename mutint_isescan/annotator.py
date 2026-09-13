@@ -6,6 +6,7 @@ time is `tasks.run_isescan`.
 """
 
 import logging
+import os
 
 from django.urls import reverse
 
@@ -132,7 +133,26 @@ def run_rows(experiment):
             "log_url": log_urls.get(isescan_run.task_result_id, ""),
             "finished": isescan_run.is_finished,
             "delete_url": reverse("isescan_run_delete", kwargs={"pk": isescan_run.pk}),
+            "files": _file_rows(isescan_run),
         })
+    return rows
+
+
+def _file_rows(isescan_run):
+    """ISEScan's outputs as `{name, label, url}`, empty until the run has finished.
+
+    The label is the part of the name ISEScan added -- `csv`, `sum`, `is.fna` -- since every
+    file is named for the one sequence file it was run on and the prefix says nothing.
+    """
+    if not isescan_run.is_finished:
+        return []
+    rows = []
+    for name in isescan_run.output_files():
+        base = os.path.basename(name)
+        label = base.split(".", 2)[2] if base.count(".") >= 2 else base
+        rows.append({"name": name, "label": label,
+                     "url": reverse("isescan_run_file", kwargs={"pk": isescan_run.pk,
+                                                                "name": name})})
     return rows
 
 

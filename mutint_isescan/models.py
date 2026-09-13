@@ -8,6 +8,7 @@ experiment reaches the files too.
 """
 
 import logging
+import os
 import shutil
 
 from django.contrib.auth.models import User
@@ -42,6 +43,9 @@ STATUS_CHOICES = [
 FINISHED_STATUSES = (STATUS_INSTALLED, STATUS_UNCHANGED, STATUS_FAILED, STATUS_CANCELLED)
 
 MAX_LOG_CHARS = 20000
+
+#: Where ISEScan writes, under the run's directory; the FASTA copy sits beside it and goes.
+OUTPUT_DIR = "out"
 
 
 class IsescanRun(models.Model):
@@ -83,6 +87,24 @@ class IsescanRun(models.Model):
 
     def directory(self):
         return store.component_dir(COMPONENT, self.pk)
+
+    def output_dir(self):
+        return os.path.join(self.directory(), OUTPUT_DIR)
+
+    def output_files(self):
+        """What ISEScan left, as paths relative to `output_dir()`, sorted.
+
+        Everything under `out/` after the scratch is cleaned: the CSV the merge read, the
+        same table as TSV and two aligned-text spellings, ISEScan's own GFF3 of the
+        prediction, the per-family summary, and the elements' and transposase ORFs' sequences.
+        Served by `views.run_file`; a name not in this list is refused there.
+        """
+        root = self.output_dir()
+        found = []
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for name in filenames:
+                found.append(os.path.relpath(os.path.join(dirpath, name), root))
+        return sorted(found)
 
     def truncated_log(self, text):
         if len(text) <= MAX_LOG_CHARS:

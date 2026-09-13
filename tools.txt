@@ -1,20 +1,12 @@
 # Conda package specs, one per line, collected by the entry script and installed into
 # env/tools with micromamba. See mutint-core/tools.txt for the contract.
 #
-# isescan
+# ISEScan, from bioconda. It shells out by bare name to hmmer, blastn and FragGeneScan,
+# which the package depends on, so they land in env/tools/bin beside it and
+# `runner.tool_environment` puts that directory first on the run's PATH.
 #
-# ISEScan, from bioconda. **Commented out until the osx-arm64 build is published there.**
-# The entry script installs every component's tools in one micromamba solve, so a spec that
-# has no build for the host's platform fails the whole solve -- and with it `./mutint start`
-# on every Apple Silicon machine, including the one this was written on. Uncomment the line
-# above when
-#
-#     micromamba search -c bioconda --platform osx-arm64 isescan
-#
-# finds it; nothing else in this plugin changes. Meanwhile `mutint_common.tools.tool_path`
-# falls back to PATH, so an isescan.py installed by hand works, and without one the panel on
-# the Import data page says so and offers nothing.
-#
-# There is deliberately no per-platform machinery here or in the entry script: a line that
-# is present on one platform and absent on another is a second thing to keep true, and the
-# real fix is the package existing.
+# There is deliberately no per-platform machinery here or in the entry script: the entry
+# script installs every component's tools in one micromamba solve, so a spec must have a
+# build for every platform MutInt runs on. This one has had an osx-arm64 build since
+# 1.7.3 h9e3228c_1 (September 2026); before that the line was commented out.
+isescan

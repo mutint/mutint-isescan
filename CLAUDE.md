@@ -32,7 +32,7 @@ re-annotates every mutation. breseq is not a requirement of this plugin.
 | `annotator.py` | what the registry calls: `clean`, `run` (queues a job), the panel's context, the run rows |
 | `tasks.py` | the `@task`: copy the reference, run ISEScan, merge, install under the import lock |
 | `models.py` | `IsescanRun`, and the receiver that owns its directory |
-| `views.py` | the run list the panel polls, and deleting a finished run |
+| `views.py` | the run list the panel polls, deleting a finished run, and serving a run's files |
 | `templates/isescan/panel.html`, `static/mutint_isescan/panel.js` | the panel body and its run table |
 
 `merge.py` and `runner.py` are pure on purpose, in the shape mutint-breseq's `runner.py` and
@@ -43,21 +43,23 @@ becomes and where its output is looked for, and both are testable without the to
 
 ## Things that are load-bearing
 
-### The tool is stubbed until its package exists, and the stub is one commented line
+### The tool comes from `tools.txt`, and the plugin never assumes it is there
 
-bioconda's `isescan` had no osx-arm64 build when this was written; one is on its way. The
-entry script installs every component's tools in one micromamba solve, so an unconditional
-`isescan` line in `tools.txt` would break `./mutint start` on every Apple Silicon machine
-until it lands. **The line is present and commented**, with the check that says when to
-uncomment it, and that is the whole mechanism: `runner.available()` asks `tools.tool_path`,
-which looks in the managed directory and then on PATH, and the panel disables its enable box
-and says the tool is not installed when the answer is no. Nothing else in the plugin knows the
-tool is absent, and a hand-installed `isescan.py` on PATH exercises the whole path today.
+`tools.txt` names `isescan`, which bioconda builds for every platform MutInt runs on --
+osx-arm64 since `1.7.3 h9e3228c_1`, and the line was commented out until that build existed,
+because the entry script installs every component's tools in one micromamba solve and a spec
+with no build for the host fails the whole solve. The package depends on hmmer, blast and
+FragGeneScan, which ISEScan calls by bare name, so `runner.tool_environment` puts
+`env/tools/bin` first on the run's PATH.
+
+Absence is still handled rather than assumed away: `runner.available()` asks
+`tools.tool_path`, which looks in the managed directory and then on PATH, and the panel
+disables its enable box and says the tool is not installed when the answer is no. Nothing
+else in the plugin knows whether the tool is present.
 
 **There is deliberately no per-platform machinery** -- no platform prefix on `tools.txt`
-lines, no entry-script change, no arm64 reasoning in the not-installed sentence. A line that is
-present on one platform and absent on another is a second thing to keep true, and the fix is
-the package existing.
+lines, no entry-script change. A line that is present on one platform and absent on another
+is a second thing to keep true.
 
 ### The merge is breseq's, line for line, with one stated departure
 
@@ -103,13 +105,24 @@ sequence and installing it re-annotates every mutation, an import-class write, a
 would rather wait for a web drop than throw its run away. The cancellation flag is the wait's
 `check`.
 
-### Cleanup keeps the CSV and drops the scratch
+### Cleanup keeps ISEScan's outputs, drops the scratch, and the row links what is kept
 
-A run's directory keeps ISEScan's CSV, `.gff` and `.sum`; the FASTA copy and ISEScan's
-`proteome/` and `hmm/` directories go, whatever the outcome. `IsescanRun`'s `post_delete`
-receiver removes the whole directory, and because `experiment` cascades, deleting an experiment
-reaches it. `run_delete` refuses an unfinished run for the reason mutint-breseq's does: the
-receiver would pull the directory out from under a live ISEScan.
+A run's directory keeps everything ISEScan wrote under `out/` -- the CSV the merge read, the
+same table as TSV and two aligned-text spellings, ISEScan's own GFF3 of the prediction, the
+per-family `.sum`, and the elements' and transposase ORFs' sequences (`is.fna`, `orf.faa`,
+`orf.fna`); about 200 KB for a bacterial genome. The FASTA copy and ISEScan's `proteome/` and
+`hmm/` directories go, whatever the outcome. **Every kept file is a link on the run's row**,
+through `/isescan/runs/<pk>/files/<name>`: the prediction is the evidence behind an installed
+annotation, and a reader who cannot see it has to take the annotation on trust. Read access is
+the bar, as for the reference download; the name is checked against `output_files()` rather
+than resolved, so no typed path reaches the filesystem; and every refusal is a 404, so the
+endpoint cannot say which run ids exist. Every ISEScan output is text and is served as such,
+since core's extension table knows nothing of `.faa`, `.sum` or `.raw`.
+
+`IsescanRun`'s `post_delete` receiver removes the whole directory, and because `experiment`
+cascades, deleting an experiment reaches it. `run_delete` refuses an unfinished run for the
+reason mutint-breseq's does: the receiver would pull the directory out from under a live
+ISEScan.
 
 ### The enable box is core's, and the panel's script disables it
 
@@ -152,7 +165,7 @@ PY
 DJANGO_SETTINGS_MODULE=isescan_settings PYTHONPATH=/tmp:../mutint-isescan ./mutint test mutint_isescan
 ```
 
-**38 tests.** `tests/fake_isescan.py` is a **real executable on disk**, installed into a temp tools
+**39 tests.** `tests/fake_isescan.py` is a **real executable on disk**, installed into a temp tools
 directory, that records its argv and PATH and writes a CSV by ISEScan's own path rule -- the
 two things most likely to be wrong, which a `subprocess.run` patch would assert against the
 call rather than against a process that has to start. `test_merge` uses a GFF3 written for it
