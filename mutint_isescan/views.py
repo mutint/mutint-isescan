@@ -39,8 +39,13 @@ def runs(request):
 
 @require_POST
 def run_delete(request, pk):
-    """Delete a finished run and its directory. An unfinished one is refused: the
-    `post_delete` receiver removes the directory a live ISEScan is writing into."""
+    """Delete a run and its directory. A live one is refused: the `post_delete` receiver
+    removes the directory a running ISEScan is writing into.
+
+    **Live is what the queue says, not what the column says** -- `annotator.in_flight`. A run
+    whose worker was killed keeps `status="running"` for ever, and refusing to delete it on
+    that basis left the experiment with a run it could neither finish nor remove nor start
+    another beside."""
     if not request.user.is_authenticated:
         return JsonResponse({"error": "You must be signed in."}, status=403)
     isescan_run = IsescanRun.objects.filter(pk=pk).select_related("experiment").first()
@@ -50,10 +55,11 @@ def run_delete(request, pk):
         return JsonResponse(
             {"error": experiment_lock_refusal(isescan_run.experiment)
                       or "You cannot change this experiment."}, status=403)
-    if not isescan_run.is_finished:
+    if (not isescan_run.is_finished
+            and annotator.in_flight(isescan_run.experiment) == isescan_run):
         return JsonResponse(
-            {"error": "That run has not finished. Cancel it on the Jobs page first, then "
-                      "delete it."}, status=409)
+            {"error": "That run has not finished. Cancel it first -- the notice above the "
+                      "Import data tabs has the button -- then delete it."}, status=409)
     isescan_run.delete()
     return JsonResponse({"deleted": pk})
 

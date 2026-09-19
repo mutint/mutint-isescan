@@ -2,7 +2,12 @@
 
 `run` queues a job and returns at once -- ISEScan is minutes to an hour on a bacterial
 genome, and the registry's contract is a prompt answer with a message. Everything that takes
-time is `tasks.run_isescan`.
+time is `tasks.run_isescan`. It returns the job's id with that message, which is what puts the
+run in the panel above the Import data page's tab strip, live and with a Cancel button, rather
+than in a sentence pointing at another page.
+
+`in_flight` is the one rule worth reading before changing anything here: what is still going
+is what the *queue* says is still going, never what a row's own status column says.
 """
 
 import logging
@@ -21,6 +26,11 @@ from mutint_isescan.models import (
 )
 
 logger = logging.getLogger("mutint_isescan.annotator")
+
+#: Dotted path of the task, for `mutint_jobs.queue.status_of`, which imports the `@task` object
+#: to reach whatever backend is configured. A literal rather than an import of `tasks`, which
+#: would be a circular import at module load -- `tasks` imports this module's `_outcome`.
+TASK_PATH = "mutint_isescan.tasks.run_isescan"
 
 DEFAULTS = {"replace_existing": True, "remove_short_is": False}
 
@@ -51,11 +61,10 @@ def run(experiment, options, user):
     if not ok:
         return {"error": reason}
 
-    in_flight = IsescanRun.objects.filter(experiment=experiment).exclude(
-        status__in=FINISHED_STATUSES).first()
-    if in_flight is not None:
+    blocking = in_flight(experiment)
+    if blocking is not None:
         return {"error": ("ISEScan is already running for this experiment (run %d); wait "
-                          "for it to finish before starting another." % in_flight.pk)}
+                          "for it to finish before starting another." % blocking.pk)}
 
     from mutint_isescan import tasks
 
@@ -72,7 +81,10 @@ def run(experiment, options, user):
         label="ISEScan — %s" % experiment.name,
         component=COMPONENT,
         experiment=experiment,
-        cancellable=True)
+        cancellable=True,
+        # What this job will do is rewrite the annotation, and the Import data page holds
+        # every drop until it has. See `mutint_jobs.models.Job.annotates_reference`.
+        annotates_reference=True)
     isescan_run.task_result_id = job.task_result_id
     isescan_run.save(update_fields=["task_result_id"])
     # Read back: under an immediate task backend the run has already finished by now, and
@@ -81,9 +93,47 @@ def run(experiment, options, user):
     if isescan_run.is_finished:
         message = "ISEScan run %d finished: %s." % (isescan_run.pk, _outcome(isescan_run))
     else:
-        message = ("ISEScan queued as job %d; the annotation is installed when it finishes. "
-                   "Watch it on the Jobs page." % job.pk)
-    return {"message": message, "run_id": isescan_run.pk}
+        message = ("ISEScan queued as job %d; the annotation is installed when it finishes."
+                   % job.pk)
+    # `job_id` is what turns that sentence into a link and puts the run in the panel above
+    # the tab strip, where it can be watched and stopped without leaving the page. Core
+    # reverses it; see `mutint_common.annotator_registry`.
+    return {"message": message, "run_id": isescan_run.pk, "job_id": job.pk}
+
+
+def in_flight(experiment):
+    """The run that is genuinely still going for `experiment`, or None.
+
+    **The status column is a record of what happened; the queue is the authority on what is
+    happening.** A worker killed outright -- which `./mutint start`'s own shutdown does -- never
+    gets to write `failed`, so the row says `running` for ever. Trusting it alone wedged an
+    experiment permanently: `run` refused to start another ISEScan, and `views.run_delete`
+    refused to delete the run that was refusing, so there was no way out from the page at all.
+
+    So an unfinished-looking row is only a *candidate*, and `status_of` decides. Every way the
+    queue can fail to answer -- a pruned result, a renamed task, a backend that cannot say --
+    is `STATUS_UNKNOWN`, which counts as finished, and that direction is the right one: the
+    cost of being wrong is one wasted ISEScan run, against an experiment nobody can use.
+
+    There is a window between creating the row and writing its `task_result_id` in which a run
+    has no queue id and so looks finished. It is not reachable: both callers -- the finalize
+    path and Run annotators -- hold the global import lock across this.
+    """
+    from mutint_jobs import jobs as jobs_lib
+    from mutint_jobs import queue
+
+    candidates = (IsescanRun.objects.filter(experiment=experiment)
+                  .exclude(status__in=FINISHED_STATUSES).order_by("-pk"))
+    for candidate in candidates:
+        # A row is created before its job is enqueued, so one with no queue id never reached
+        # the queue -- an `enqueue` that raised -- and is a record of an attempt rather than
+        # work under way. Spelled out rather than left to `status_of("")`, because this is the
+        # state that used to refuse every future run against the experiment for ever.
+        if not candidate.task_result_id:
+            continue
+        if not jobs_lib.finished(queue.status_of(candidate.task_result_id, TASK_PATH)):
+            return candidate
+    return None
 
 
 def _outcome(isescan_run):

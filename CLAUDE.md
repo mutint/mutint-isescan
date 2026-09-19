@@ -94,10 +94,41 @@ failure, brefito's behaviour rather than breseq's strip-and-add-nothing.
 ### `run` queues and returns; the task installs under a waiting lock
 
 The registry's contract is a prompt answer with a message, so `annotator.run` creates the row,
-enqueues `tasks.run_isescan` through `mutint_jobs` (so it is on `/jobs/` with a name, an owner
-and a Cancel button) and returns "queued as job N" -- or, under the immediate backend, what
-the finished run did. It declines rather than raises when the tool is absent or a run for the
-experiment is still under way, since two would race on `install_annotation`.
+enqueues `tasks.run_isescan` through `mutint_jobs` and returns "queued as job N" -- or, under
+the immediate backend, what the finished run did. It declines rather than raises when the tool
+is absent or a run for the experiment is still under way, since two would race on
+`install_annotation`.
+
+**It returns `job_id` with that message, and enqueues with `annotates_reference=True`**, which
+is what puts the run in front of the person who started it. The first makes the summary row's
+label a link to the job's log. The second puts the run in the panel under the Import data
+page's tab strip -- live, on every tab, with its log and a Cancel button -- and holds every
+Import button on the experiment until it finishes. That hold is not about corruption:
+`install_annotation` re-annotates every mutation afterwards. It is that a sample imported
+meanwhile was *called* against the reference without its IS annotations, so its insertions are
+two junctions rather than one MOB, which is precisely what this plugin exists to prevent and
+which re-annotating cannot undo. The message no longer ends "Watch it on the Jobs page",
+because there is now somewhere nearer to watch it.
+
+### The status column is a record; the queue is the authority
+
+`annotator.in_flight(experiment)` is the rule, and it replaced trusting `IsescanRun.status`.
+A worker killed outright -- which `./mutint start`'s own shutdown does -- never gets to write
+`failed`, so the row says `running` for ever. That **wedged the experiment permanently**:
+`run` refused to start another ISEScan because one was "already running", and `run_delete`
+refused to delete the run that was doing the refusing, so from the page there was no way out
+at all.
+
+So an unfinished-looking row is a candidate and `queue.status_of` decides. Every way the queue
+can fail to answer -- a pruned result, a renamed task, a backend that cannot say -- is
+`STATUS_UNKNOWN`, which counts as finished; that direction costs at worst one wasted ISEScan
+run, against an experiment nobody could otherwise use. A row with **no `task_result_id`** never
+reached the queue at all -- an `enqueue` that raised -- and is skipped explicitly rather than
+left to `status_of("")`, because that is the state that used to refuse everything for ever.
+
+The refusal itself cannot be tested under the immediate backend, where a run finishes inside
+`run()` and there is never a second one under way; `test_run.StaleRunTestCase` drives the
+database backend for both directions.
 
 The task installs through `import_lock.hold_waiting`, promoted from mutint-breseq's
 `_wait_for_import_lock` for this: what the merge produces is a new annotation for the same
@@ -132,6 +163,13 @@ the template disables its own inputs. The run table polls `/isescan/runs` while 
 unfinished and says *waiting for a worker* for a queued row the queue has not claimed --
 mutint-breseq's rule, for the same reason.
 
+**It stays, beside core's annotation panel, and the two answer different questions.** Core's
+is *is something happening now, and how do I watch or stop it* -- empty the moment the job
+ends, and on every tab. This one is *what has ISEScan done to this annotation, and where is
+the evidence*: the counts, the error, the delete link, and the links to ISEScan's own outputs,
+which have no substitute anywhere. `IsescanRun` outlives the queue row, so this is the
+permanent record. The duplication on the two reference tabs is the price and is worth it.
+
 ---
 
 ## What it deliberately does not do
@@ -165,7 +203,7 @@ PY
 DJANGO_SETTINGS_MODULE=isescan_settings PYTHONPATH=/tmp:../mutint-isescan ./mutint test mutint_isescan
 ```
 
-**39 tests.** `tests/fake_isescan.py` is a **real executable on disk**, installed into a temp tools
+**48 tests.** `tests/fake_isescan.py` is a **real executable on disk**, installed into a temp tools
 directory, that records its argv and PATH and writes a CSV by ISEScan's own path rule -- the
 two things most likely to be wrong, which a `subprocess.run` patch would assert against the
 call rather than against a process that has to start. `test_merge` uses a GFF3 written for it

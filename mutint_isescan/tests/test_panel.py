@@ -124,9 +124,10 @@ class PanelTestCase(TestCase):
         self.assertEqual([run.pk], [r["id"] for r in rows["runs"]])
         self.assertFalse(rows["runs"][0]["finished"])
 
-        refused = self.client.post("/isescan/runs/%d/delete" % run.pk)
-        self.assertEqual(refused.status_code, 409)
-
+        # The refusal to delete a *live* run is `StaleRunTestCase`'s, in test_run.py: it asks
+        # the queue rather than the column, and under the immediate backend this file runs on
+        # the queue can answer nothing -- which is right, since nothing is ever really running
+        # here either.
         run.status = STATUS_INSTALLED
         run.save(update_fields=["status"])
         os.makedirs(run.directory(), exist_ok=True)

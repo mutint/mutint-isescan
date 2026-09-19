@@ -25,6 +25,7 @@ from mutint_isescan.models import (
     STATUS_FAILED,
     STATUS_INSTALLED,
     STATUS_QUEUED,
+    STATUS_RUNNING,
     STATUS_UNCHANGED,
     IsescanRun,
 )
@@ -172,11 +173,21 @@ class IsescanRunTestCase(RunFixture):
         self.assertIn("tools.txt", result["error"])
         self.assertEqual(0, IsescanRun.objects.count())
 
-    def test_a_second_run_while_one_is_under_way_is_refused(self):
+    def test_a_row_that_never_reached_the_queue_blocks_nothing(self):
+        """It used to, and that was the wedge.
+
+        A row is created before its job is enqueued, so an `enqueue` that raised leaves one
+        saying `queued` with no `task_result_id` for ever -- and "already running" then
+        refused every future run against an experiment where nothing was running at all. What
+        is in flight is what the queue says is in flight; a run that never got there is not.
+
+        The refusal itself is real and is tested under the database backend, in
+        `StaleRunTestCase`. It cannot be tested here: under the immediate backend a run
+        finishes inside `run()`, so there is never a second one under way.
+        """
         IsescanRun.objects.create(experiment=self.experiment, status=STATUS_QUEUED)
-        result = self._run()
-        self.assertIn("already running", result["error"])
-        self.assertEqual(1, IsescanRun.objects.count())
+        self.assertNotIn("error", self._run())
+        self.assertEqual(2, IsescanRun.objects.count())
 
     def test_the_task_re_raises_after_recording_a_failure(self):
         os.environ["FAKE_ISESCAN_FAIL"] = "2"
@@ -217,3 +228,75 @@ class CancelledRunTestCase(RunFixture):
         run.refresh_from_db()
         self.assertEqual(STATUS_CANCELLED, run.status)
         self.assertIn("IS150", self._stored_gff3())
+
+
+@override_settings(TASKS=DATABASE_BACKEND)
+class JobAttributionTestCase(RunFixture):
+    """What `run` hands back, and what the `Job` it created says about itself."""
+
+    def test_the_job_says_it_will_rewrite_the_annotation(self):
+        """The Import data page holds every drop while this job is in flight -- not because
+        anything would be corrupted, but because a sample imported now was *called* against
+        the reference as it stands, with each IS insertion as two junctions rather than the
+        one MOB this run exists to make possible."""
+        self._run()
+        job = jobs_api.for_user(self.user).get()
+        self.assertTrue(job.annotates_reference)
+        self.assertEqual(self.experiment, job.experiment)
+
+    def test_it_returns_the_job_id_so_the_message_can_be_a_link(self):
+        result = self._run()
+        job = jobs_api.for_user(self.user).get()
+        self.assertEqual(job.pk, result["job_id"])
+        # And no longer sends anybody off to another page to find it: the panel above the
+        # import tabs carries the run, its log and its Cancel button.
+        self.assertNotIn("Jobs page", result["message"])
+
+
+@override_settings(TASKS=DATABASE_BACKEND)
+class StaleRunTestCase(RunFixture):
+    """**The status column is a record of what happened; the queue says what is happening.**
+
+    A worker killed outright -- which `./mutint start`'s own shutdown does -- never writes
+    `failed`, so the row says `running` for ever. Trusting it alone wedged the experiment
+    permanently: `run` refused to start another ISEScan because one was "already running",
+    and `run_delete` refused to remove the run that was doing the refusing, so there was no
+    way out from the page at all.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from django_tasks_db.models import DBTaskResult
+        self.DBTaskResult = DBTaskResult
+        self.client.force_login(self.user)
+        self._run()
+        self.run = IsescanRun.objects.get()
+        self.run.status = STATUS_RUNNING
+        self.run.save(update_fields=["status"])
+
+    def _kill_the_worker(self):
+        """What a `kill -9` leaves behind: the queue row gone, the column still saying so."""
+        self.DBTaskResult.objects.filter(id=self.run.task_result_id).delete()
+
+    def test_a_genuinely_running_one_still_blocks_a_second_run(self):
+        self.assertIn("already running", self._run()["error"])
+
+    def test_a_genuinely_running_one_still_refuses_deletion(self):
+        response = self.client.post("/isescan/runs/%d/delete" % self.run.pk)
+        self.assertEqual(409, response.status_code)
+
+    def test_a_run_whose_worker_died_does_not_block_another(self):
+        self._kill_the_worker()
+        self.assertNotIn("error", self._run())
+        self.assertEqual(2, IsescanRun.objects.count())
+
+    def test_a_run_whose_worker_died_can_be_deleted(self):
+        self._kill_the_worker()
+        response = self.client.post("/isescan/runs/%d/delete" % self.run.pk)
+        self.assertEqual(200, response.status_code)
+        self.assertFalse(IsescanRun.objects.filter(pk=self.run.pk).exists())
+
+    def test_a_finished_queue_result_does_not_block_either(self):
+        self.DBTaskResult.objects.filter(id=self.run.task_result_id).update(
+            status="SUCCESSFUL")
+        self.assertIsNone(annotator.in_flight(self.experiment))
