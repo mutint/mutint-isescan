@@ -49,8 +49,8 @@ becomes and where its output is looked for, and both are testable without the to
 osx-arm64 since `1.7.3 h9e3228c_1`, and the line was commented out until that build existed,
 because the entry script installs every component's tools in one micromamba solve and a spec
 with no build for the host fails the whole solve. The package depends on hmmer, blast and
-FragGeneScan, which ISEScan calls by bare name, so `runner.tool_environment` puts
-`env/tools/bin` first on the run's PATH.
+FragGeneScan, which ISEScan calls by bare name, so the task runs it under core's
+`mutint_common.tools.tool_environment()`, which puts `env/tools/bin` first on its PATH.
 
 Absence is still handled rather than assumed away: `runner.available()` asks
 `tools.tool_path`, which looks in the managed directory and then on PATH, and the panel
@@ -203,7 +203,7 @@ PY
 DJANGO_SETTINGS_MODULE=isescan_settings PYTHONPATH=/tmp:../mutint-isescan ./mutint test mutint_isescan
 ```
 
-**48 tests.** `tests/fake_isescan.py` is a **real executable on disk**, installed into a temp tools
+**47 tests.** `tests/fake_isescan.py` is a **real executable on disk**, installed into a temp tools
 directory, that records its argv and PATH and writes a CSV by ISEScan's own path rule -- the
 two things most likely to be wrong, which a `subprocess.run` patch would assert against the
 call rather than against a process that has to start. `test_merge` uses a GFF3 written for it

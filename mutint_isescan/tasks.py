@@ -26,7 +26,7 @@ from django.conf import settings
 from django.tasks import task
 from django.utils import timezone
 
-from mutint_common import store
+from mutint_common import store, tools
 from mutint_common.tools import ToolMissing
 from mutint_import import import_lock, reference, reference_store
 from mutint_import.annotate.gff3 import load_gff3, render_breseq_gff3
@@ -136,7 +136,7 @@ def run_isescan(context, run_id):
     with logs.open_log(queue_id) as log:
         try:
             returncode = processes.run_tool(
-                argv, log, env=runner.tool_environment(), timeout=_timeout(),
+                argv, log, env=tools.tool_environment(), timeout=_timeout(),
                 is_cancelled=lambda: jobs.is_cancelled(queue_id), what="isescan")
         except processes.Cancelled:
             _finish(run, STATUS_CANCELLED, log=_tail(queue_id, run))

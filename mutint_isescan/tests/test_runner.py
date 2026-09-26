@@ -32,11 +32,6 @@ class EnvironmentTestCase(SimpleTestCase):
         self.tools = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tools, True)
 
-    def test_the_tools_bin_leads_the_path(self):
-        with override_settings(MUTINT_TOOLS_DIR=self.tools):
-            env = runner.tool_environment({"PATH": "/usr/bin"})
-        self.assertEqual(os.path.join(self.tools, "bin") + os.pathsep + "/usr/bin", env["PATH"])
-
     def test_available_when_the_fake_is_installed(self):
         fake_isescan.install(self.tools)
         with override_settings(MUTINT_TOOLS_DIR=self.tools):

@@ -13,9 +13,8 @@ means prediction never runs and **no CSV exists**; hits that yield no element me
 **header-only CSV**.
 
 **ISEScan shells out by bare name** -- hmmer, blastn, FragGeneScan -- so, like breseq, it needs
-`env/tools/bin` on its PATH and an absolute path to `isescan.py` is not enough.
-`tool_environment` is mutint-breseq's, copied; lifting it into `mutint_common.tools` is the
-follow-up now that there are two producers.
+`env/tools/bin` on its PATH and an absolute path to `isescan.py` is not enough. The task runs
+it under core's `mutint_common.tools.tool_environment()`, which puts it there.
 
 **`available()` says only whether `isescan.py` can be found**, through `tools.tool_path`,
 which looks in the managed tools directory and then on PATH. There is deliberately no
@@ -65,18 +64,6 @@ def csv_path(output_dir, seqfile):
     seqfile = os.path.abspath(seqfile)
     org = os.path.basename(os.path.dirname(seqfile))
     return os.path.join(output_dir, org, os.path.basename(seqfile) + '.csv')
-
-
-def tool_environment(env=None):
-    """`env` with the managed tools directory first on PATH, for the tools ISEScan calls."""
-    env = dict(os.environ if env is None else env)
-    directory = tools.tools_dir()
-    if not directory:
-        return env
-    bin_dir = os.path.join(directory, 'bin')
-    existing = env.get('PATH', '')
-    env['PATH'] = bin_dir + (os.pathsep + existing if existing else '')
-    return env
 
 
 def default_threads():
